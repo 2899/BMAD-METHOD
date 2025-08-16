@@ -1,258 +1,38 @@
 #!/usr/bin/env node
 
-const { Command } = require('commander');
-const fs = require('fs-extra');
-const path = require('node:path');
-const { glob } = require('glob');
-const { minimatch } = require('minimatch');
+const { Command } = require("commander");
+const fs = require("fs-extra");
+const path = require("node:path");
+const process = require("node:process");
+
+// Modularized components
+const { findProjectRoot } = require("./projectRoot.js");
+const { promptYesNo, promptPath } = require("./prompts.js");
+const {
+  discoverFiles,
+  filterFiles,
+  aggregateFileContents,
+} = require("./files.js");
+const { generateXMLOutput } = require("./xml.js");
+const { calculateStatistics } = require("./stats.js");
 
 /**
  * Recursively discover all files in a directory
  * @param {string} rootDir - The root directory to scan
  * @returns {Promise<string[]>} Array of file paths
  */
-async function discoverFiles(rootDir) {
-  try {
-    const gitignorePath = path.join(rootDir, '.gitignore');
-    const gitignorePatterns = await parseGitignore(gitignorePath);
-
-    // Common gitignore patterns that should always be ignored
-    const commonIgnorePatterns = [
-      // Version control
-      '.git/**',
-      '.svn/**',
-      '.hg/**',
-      '.bzr/**',
-
-      // Dependencies
-      'node_modules/**',
-      'bower_components/**',
-      'vendor/**',
-      'packages/**',
-
-      // Build outputs
-      'build/**',
-      'dist/**',
-      'out/**',
-      'target/**',
-      'bin/**',
-      'obj/**',
-      'release/**',
-      'debug/**',
-
-      // Environment and config
-      '.env',
-      '.env.*',
-      '*.env',
-      '.config',
-      '.venv/**',
-      '*/.venv/**',
-      '**/.venv/**',
-      '.venv',
-      'venv/**',
-      '*/venv/**',
-      '**/venv/**',
-      'venv',
-      'env/**',
-      '*/env/**',
-      '**/env/**',
-      'virtualenv/**',
-      '*/virtualenv/**',
-      '**/virtualenv/**',
-
-      // Logs
-      'logs/**',
-      '*.log',
-      'npm-debug.log*',
-      'yarn-debug.log*',
-      'yarn-error.log*',
-      'lerna-debug.log*',
-
-      // Coverage and testing
-      'coverage/**',
-      '.nyc_output/**',
-      '.coverage/**',
-      'test-results/**',
-      'junit.xml',
-
-      // Cache directories
-      '.cache/**',
-      '.tmp/**',
-      '.temp/**',
-      'tmp/**',
-      'temp/**',
-      '.sass-cache/**',
-      '.eslintcache',
-      '.stylelintcache',
-
-      // OS generated files
-      '.DS_Store',
-      '.DS_Store?',
-      '._*',
-      '.Spotlight-V100',
-      '.Trashes',
-      'ehthumbs.db',
-      'Thumbs.db',
-      'desktop.ini',
-
-      // IDE and editor files
-      '.vscode/**',
-      '.idea/**',
-      '*.swp',
-      '*.swo',
-      '*~',
-      '.project',
-      '.classpath',
-      '.settings/**',
-      '*.sublime-project',
-      '*.sublime-workspace',
-
-      // Package manager files
-      'package-lock.json',
-      'yarn.lock',
-      'pnpm-lock.yaml',
-      'composer.lock',
-      'Pipfile.lock',
-
-      // Runtime and compiled files
-      '*.pyc',
-      '*.pyo',
-      '*.pyd',
-      '__pycache__/**',
-      '*.class',
-      '*.jar',
-      '*.war',
-      '*.ear',
-      '*.o',
-      '*.so',
-      '*.dll',
-      '*.exe',
-      'lib64/**',
-      '**/.venv/lib64/**',
-      '**/venv/lib64/**',
-      
-      // Documentation build
-      '_site/**',
-      '.jekyll-cache/**',
-      '.jekyll-metadata',
-
-      // Flattener specific outputs
-      'flattened-codebase.xml',
-      'repomix-output.xml'
-    ];
-
-    const combinedIgnores = [
-      ...gitignorePatterns,
-      ...commonIgnorePatterns
-    ];
-
-    // Add specific patterns for commonly ignored directories and files
-    const additionalGlobIgnores = [
-      // Virtual environments
-      '**/.venv/**', '**/venv/**', '**/.virtualenv/**', '**/virtualenv/**',
-      // Node modules
-      '**/node_modules/**',
-      // Python cache
-      '**/__pycache__/**', '**/*.pyc', '**/*.pyo', '**/*.pyd',
-      // Binary and media files
-      '**/*.jpg', '**/*.jpeg', '**/*.png', '**/*.gif', '**/*.bmp', '**/*.ico', '**/*.svg',
-      '**/*.pdf', '**/*.doc', '**/*.docx', '**/*.xls', '**/*.xlsx', '**/*.ppt', '**/*.pptx',
-      '**/*.zip', '**/*.tar', '**/*.gz', '**/*.rar', '**/*.7z',
-      '**/*.exe', '**/*.dll', '**/*.so', '**/*.dylib',
-      '**/*.mp3', '**/*.mp4', '**/*.avi', '**/*.mov', '**/*.wav',
-      '**/*.ttf', '**/*.otf', '**/*.woff', '**/*.woff2'
-    ];
-    
-    // Use glob to recursively find all files, excluding common ignore patterns
-    const files = await glob('**/*', {
-      cwd: rootDir,
-      nodir: true, // Only files, not directories
-      dot: true,   // Include hidden files
-      follow: false, // Don't follow symbolic links
-      ignore: [...combinedIgnores, ...additionalGlobIgnores]
-    });
-
-    return files.map(file => path.resolve(rootDir, file));
-  } catch (error) {
-    console.error('Error discovering files:', error.message);
-    return [];
-  }
-}
 
 /**
  * Parse .gitignore file and return ignore patterns
  * @param {string} gitignorePath - Path to .gitignore file
  * @returns {Promise<string[]>} Array of ignore patterns
  */
-async function parseGitignore(gitignorePath) {
-  try {
-    if (!await fs.pathExists(gitignorePath)) {
-      return [];
-    }
-
-    const content = await fs.readFile(gitignorePath, 'utf8');
-    return content
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#')) // Remove empty lines and comments
-      .map(pattern => {
-        // Convert gitignore patterns to glob patterns
-        if (pattern.endsWith('/')) {
-          return pattern + '**';
-        }
-        return pattern;
-      });
-  } catch (error) {
-    console.error('Error parsing .gitignore:', error.message);
-    return [];
-  }
-}
 
 /**
  * Check if a file is binary using file command and heuristics
  * @param {string} filePath - Path to the file
  * @returns {Promise<boolean>} True if file is binary
  */
-async function isBinaryFile(filePath) {
-  try {
-    // First check if the path is a directory
-    const stats = await fs.stat(filePath);
-    if (stats.isDirectory()) {
-      throw new Error(`EISDIR: illegal operation on a directory`);
-    }
-
-    // Check by file extension
-    const binaryExtensions = [
-      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg',
-      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-      '.zip', '.tar', '.gz', '.rar', '.7z',
-      '.exe', '.dll', '.so', '.dylib',
-      '.mp3', '.mp4', '.avi', '.mov', '.wav',
-      '.ttf', '.otf', '.woff', '.woff2',
-      '.bin', '.dat', '.db', '.sqlite'
-    ];
-
-    const ext = path.extname(filePath).toLowerCase();
-    if (binaryExtensions.includes(ext)) {
-      return true;
-    }
-
-    // For files without clear extensions, try to read a small sample
-    if (stats.size === 0) {
-      return false; // Empty files are considered text
-    }
-
-    // Read first 1024 bytes to check for null bytes
-    const sampleSize = Math.min(1024, stats.size);
-    const buffer = await fs.readFile(filePath, { encoding: null, flag: 'r' });
-    const sample = buffer.slice(0, sampleSize);
-    // If we find null bytes, it's likely binary
-    return sample.includes(0);
-  } catch (error) {
-    console.warn(`Warning: Could not determine if file is binary: ${filePath} - ${error.message}`);
-    return false; // Default to text if we can't determine
-  }
-}
 
 /**
  * Read and aggregate content from text files
@@ -261,68 +41,6 @@ async function isBinaryFile(filePath) {
  * @param {Object} spinner - Optional spinner instance for progress display
  * @returns {Promise<Object>} Object containing file contents and metadata
  */
-async function aggregateFileContents(files, rootDir, spinner = null) {
-  const results = {
-    textFiles: [],
-    binaryFiles: [],
-    errors: [],
-    totalFiles: files.length,
-    processedFiles: 0
-  };
-
-  for (const filePath of files) {
-    try {
-      const relativePath = path.relative(rootDir, filePath);
-
-      // Update progress indicator
-      if (spinner) {
-        spinner.text = `Processing file ${results.processedFiles + 1}/${results.totalFiles}: ${relativePath}`;
-      }
-
-      const isBinary = await isBinaryFile(filePath);
-
-      if (isBinary) {
-        results.binaryFiles.push({
-          path: relativePath,
-          absolutePath: filePath,
-          size: (await fs.stat(filePath)).size
-        });
-      } else {
-        // Read text file content
-        const content = await fs.readFile(filePath, 'utf8');
-        results.textFiles.push({
-          path: relativePath,
-          absolutePath: filePath,
-          content: content,
-          size: content.length,
-          lines: content.split('\n').length
-        });
-      }
-
-      results.processedFiles++;
-    } catch (error) {
-      const relativePath = path.relative(rootDir, filePath);
-      const errorInfo = {
-        path: relativePath,
-        absolutePath: filePath,
-        error: error.message
-      };
-
-      results.errors.push(errorInfo);
-
-      // Log warning without interfering with spinner
-      if (spinner) {
-        spinner.warn(`Warning: Could not read file ${relativePath}: ${error.message}`);
-      } else {
-        console.warn(`Warning: Could not read file ${relativePath}: ${error.message}`);
-      }
-
-      results.processedFiles++;
-    }
-  }
-
-  return results;
-}
 
 /**
  * Generate XML output with aggregated file contents using streaming
@@ -330,111 +48,6 @@ async function aggregateFileContents(files, rootDir, spinner = null) {
  * @param {string} outputPath - The output file path
  * @returns {Promise<void>} Promise that resolves when writing is complete
  */
-async function generateXMLOutput(aggregatedContent, outputPath) {
-  const { textFiles } = aggregatedContent;
-
-  // Create write stream for efficient memory usage
-  const writeStream = fs.createWriteStream(outputPath, { encoding: 'utf8' });
-
-  return new Promise((resolve, reject) => {
-    writeStream.on('error', reject);
-    writeStream.on('finish', resolve);
-
-    // Write XML header
-    writeStream.write('<?xml version="1.0" encoding="UTF-8"?>\n');
-    writeStream.write('<files>\n');
-
-    // Process files one by one to minimize memory usage
-    let fileIndex = 0;
-
-    const writeNextFile = () => {
-      if (fileIndex >= textFiles.length) {
-        // All files processed, close XML and stream
-        writeStream.write('</files>\n');
-        writeStream.end();
-        return;
-      }
-
-      const file = textFiles[fileIndex];
-      fileIndex++;
-
-      // Write file opening tag
-      writeStream.write(`  <file path="${escapeXml(file.path)}">`);
-
-      // Use CDATA for code content, handling CDATA end sequences properly
-      if (file.content?.trim()) {
-        const indentedContent = indentFileContent(file.content);
-        if (file.content.includes(']]>')) {
-          // If content contains ]]>, split it and wrap each part in CDATA
-          writeStream.write(splitAndWrapCDATA(indentedContent));
-        } else {
-          writeStream.write(`<![CDATA[\n${indentedContent}\n    ]]>`);
-        }
-      } else if (file.content) {
-        // Handle empty or whitespace-only content
-        const indentedContent = indentFileContent(file.content);
-        writeStream.write(`<![CDATA[\n${indentedContent}\n    ]]>`);
-      }
-
-      // Write file closing tag
-      writeStream.write('</file>\n');
-
-      // Continue with next file on next tick to avoid stack overflow
-      setImmediate(writeNextFile);
-    };
-
-    // Start processing files
-    writeNextFile();
-  });
-}
-
-/**
- * Escape XML special characters for attributes
- * @param {string} str - String to escape
- * @returns {string} Escaped string
- */
-function escapeXml(str) {
-  if (typeof str !== 'string') {
-    return String(str);
-  }
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-/**
- * Indent file content with 4 spaces for each line
- * @param {string} content - Content to indent
- * @returns {string} Indented content
- */
-function indentFileContent(content) {
-  if (typeof content !== 'string') {
-    return String(content);
-  }
-
-  // Split content into lines and add 4 spaces of indentation to each line
-  return content.split('\n').map(line => `    ${line}`).join('\n');
-}
-
-/**
- * Split content containing ]]> and wrap each part in CDATA
- * @param {string} content - Content to process
- * @returns {string} Content with properly wrapped CDATA sections
- */
-function splitAndWrapCDATA(content) {
-  if (typeof content !== 'string') {
-    return String(content);
-  }
-
-  // Replace ]]> with ]]]]><![CDATA[> to escape it within CDATA
-  const escapedContent = content.replace(/]]>/g, ']]]]><![CDATA[>');
-  return `<![CDATA[
-${escapedContent}
-    ]]>`;
-}
 
 /**
  * Calculate statistics for the processed files
@@ -442,38 +55,6 @@ ${escapedContent}
  * @param {number} xmlFileSize - The size of the generated XML file in bytes
  * @returns {Object} Statistics object
  */
-function calculateStatistics(aggregatedContent, xmlFileSize) {
-  const { textFiles, binaryFiles, errors } = aggregatedContent;
-
-  // Calculate total file size in bytes
-  const totalTextSize = textFiles.reduce((sum, file) => sum + file.size, 0);
-  const totalBinarySize = binaryFiles.reduce((sum, file) => sum + file.size, 0);
-  const totalSize = totalTextSize + totalBinarySize;
-
-  // Calculate total lines of code
-  const totalLines = textFiles.reduce((sum, file) => sum + file.lines, 0);
-
-  // Estimate token count (rough approximation: 1 token ≈ 4 characters)
-  const estimatedTokens = Math.ceil(xmlFileSize / 4);
-
-  // Format file size
-  const formatSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  return {
-    totalFiles: textFiles.length + binaryFiles.length,
-    textFiles: textFiles.length,
-    binaryFiles: binaryFiles.length,
-    errorFiles: errors.length,
-    totalSize: formatSize(totalSize),
-    xmlSize: formatSize(xmlFileSize),
-    totalLines,
-    estimatedTokens: estimatedTokens.toLocaleString()
-  };
-}
 
 /**
  * Filter files based on .gitignore patterns
@@ -481,114 +62,75 @@ function calculateStatistics(aggregatedContent, xmlFileSize) {
  * @param {string} rootDir - The root directory
  * @returns {Promise<string[]>} Filtered array of file paths
  */
-async function filterFiles(files, rootDir) {
-  const gitignorePath = path.join(rootDir, '.gitignore');
-  const ignorePatterns = await parseGitignore(gitignorePath);
 
-  // Add explicit patterns for common directories and files to ignore
-  const additionalPatterns = [
-    // Virtual environments
-    '**/.venv/**', '**/venv/**', '**/env/**', '**/virtualenv/**',
-    '.venv/**', 'venv/**', 'env/**', 'virtualenv/**',
-    '.venv', 'venv', 'env', 'virtualenv',
-    
-    // Node modules
-    '**/node_modules/**',
-    'node_modules/**',
-    'node_modules',
-    
-    // Python cache
-    '**/__pycache__/**',
-    '__pycache__/**',
-    '__pycache__',
-    '**/*.pyc',
-    '**/*.pyo',
-    '**/*.pyd',
-    
-    // Binary and media files
-    '**/*.jpg', '**/*.jpeg', '**/*.png', '**/*.gif', '**/*.bmp', '**/*.ico', '**/*.svg',
-    '**/*.pdf', '**/*.doc', '**/*.docx', '**/*.xls', '**/*.xlsx', '**/*.ppt', '**/*.pptx',
-    '**/*.zip', '**/*.tar', '**/*.gz', '**/*.rar', '**/*.7z',
-    '**/*.exe', '**/*.dll', '**/*.so', '**/*.dylib',
-    '**/*.mp3', '**/*.mp4', '**/*.avi', '**/*.mov', '**/*.wav',
-    '**/*.ttf', '**/*.otf', '**/*.woff', '**/*.woff2'
-  ];
-  
-  const allIgnorePatterns = [
-    ...ignorePatterns,
-    ...additionalPatterns
-  ];
-
-  // Convert absolute paths to relative for pattern matching
-  const relativeFiles = files.map(file => path.relative(rootDir, file));
-
-  // Separate positive and negative patterns
-  const positivePatterns = allIgnorePatterns.filter(p => !p.startsWith('!'));
-  const negativePatterns = allIgnorePatterns.filter(p => p.startsWith('!')).map(p => p.slice(1));
-
-  // Filter out files that match ignore patterns
-  const filteredRelative = [];
-
-  for (const file of relativeFiles) {
-    let shouldIgnore = false;
-
-    // First, explicit check for commonly ignored directories and file types
-    if (
-      // Check for virtual environments
-      file.includes('/.venv/') || file.includes('/venv/') || 
-      file.startsWith('.venv/') || file.startsWith('venv/') ||
-      // Check for node_modules
-      file.includes('/node_modules/') || file.startsWith('node_modules/') ||
-      // Check for Python cache
-      file.includes('/__pycache__/') || file.startsWith('__pycache__/') ||
-      file.endsWith('.pyc') || file.endsWith('.pyo') || file.endsWith('.pyd') ||
-      // Check for common binary file extensions
-      /\.(jpg|jpeg|png|gif|bmp|ico|svg|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|tar|gz|rar|7z|exe|dll|so|dylib|mp3|mp4|avi|mov|wav|ttf|otf|woff|woff2)$/i.test(file)
-    ) {
-      shouldIgnore = true;
-    } else {
-      // Check against other patterns
-      for (const pattern of positivePatterns) {
-        if (minimatch(file, pattern, { dot: true })) {
-          shouldIgnore = true;
-          break;
-        }
-      }
-
-      // Then check negative patterns (don't ignore these files even if they match positive patterns)
-      if (shouldIgnore) {
-        for (const pattern of negativePatterns) {
-          if (minimatch(file, pattern, { dot: true })) {
-            shouldIgnore = false;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!shouldIgnore) {
-      filteredRelative.push(file);
-    }
-  }
-
-  // Convert back to absolute paths
-  return filteredRelative.map(file => path.resolve(rootDir, file));
-}
+/**
+ * Attempt to find the project root by walking up from startDir
+ * Looks for common project markers like .git, package.json, pyproject.toml, etc.
+ * @param {string} startDir
+ * @returns {Promise<string|null>} project root directory or null if not found
+ */
 
 const program = new Command();
 
 program
-  .name('bmad-flatten')
-  .description('BMad-Method codebase flattener tool')
-  .version('1.0.0')
-  .option('-i, --input <path>', 'Input directory to flatten', process.cwd())
-  .option('-o, --output <path>', 'Output file path', 'flattened-codebase.xml')
+  .name("bmad-flatten")
+  .description("BMad-Method codebase flattener tool")
+  .version("1.0.0")
+  .option("-i, --input <path>", "Input directory to flatten", process.cwd())
+  .option("-o, --output <path>", "Output file path", "flattened-codebase.xml")
   .action(async (options) => {
-    const inputDir = path.resolve(options.input);
-    const outputPath = path.resolve(options.output);
-    
-    console.log(`Flattening codebase from: ${inputDir}`);
-    console.log(`Output file: ${outputPath}`);
+    let inputDir = path.resolve(options.input);
+    let outputPath = path.resolve(options.output);
+
+    // Detect if user explicitly provided -i/--input or -o/--output
+    const argv = process.argv.slice(2);
+    const userSpecifiedInput = argv.some((a) =>
+      a === "-i" || a === "--input" || a.startsWith("--input=")
+    );
+    const userSpecifiedOutput = argv.some((a) =>
+      a === "-o" || a === "--output" || a.startsWith("--output=")
+    );
+    const noPathArgs = !userSpecifiedInput && !userSpecifiedOutput;
+
+    if (noPathArgs) {
+      const detectedRoot = await findProjectRoot(process.cwd());
+      const suggestedOutput = detectedRoot
+        ? path.join(detectedRoot, "flattened-codebase.xml")
+        : path.resolve("flattened-codebase.xml");
+
+      if (detectedRoot) {
+        const useDefaults = await promptYesNo(
+          `Detected project root at "${detectedRoot}". Use it as input and write output to "${suggestedOutput}"?`,
+          true,
+        );
+        if (useDefaults) {
+          inputDir = detectedRoot;
+          outputPath = suggestedOutput;
+        } else {
+          inputDir = await promptPath(
+            "Enter input directory path",
+            process.cwd(),
+          );
+          outputPath = await promptPath(
+            "Enter output file path",
+            path.join(inputDir, "flattened-codebase.xml"),
+          );
+        }
+      } else {
+        console.log("Could not auto-detect a project root.");
+        inputDir = await promptPath(
+          "Enter input directory path",
+          process.cwd(),
+        );
+        outputPath = await promptPath(
+          "Enter output file path",
+          path.join(inputDir, "flattened-codebase.xml"),
+        );
+      }
+    }
+
+    // Ensure output directory exists
+    await fs.ensureDir(path.dirname(outputPath));
 
     try {
       // Verify input directory exists
@@ -598,60 +140,531 @@ program
       }
 
       // Import ora dynamically
-      const { default: ora } = await import('ora');
+      const { default: ora } = await import("ora");
 
       // Start file discovery with spinner
-      const discoverySpinner = ora('🔍 Discovering files...').start();
+      const discoverySpinner = ora("🔍 Discovering files...").start();
       const files = await discoverFiles(inputDir);
       const filteredFiles = await filterFiles(files, inputDir);
-      discoverySpinner.succeed(`📁 Found ${filteredFiles.length} files to include`);
-
-      // Write filteredFiles to temp.txt for debugging XML including unneeded files
-      // const tempFilePath = path.join(process.cwd(), 'temp-filtered-files.txt');
-      // await fs.writeFile(
-      //   tempFilePath, 
-      //   filteredFiles.map(file => `${file}\n${path.relative(inputDir, file)}\n---\n`).join('\n')
-      // );
-      // console.log(`📄 Filtered files written to: ${tempFilePath}`);
+      discoverySpinner.succeed(
+        `📁 Found ${filteredFiles.length} files to include`,
+      );
 
       // Process files with progress tracking
-      console.log('Reading file contents');
-      const processingSpinner = ora('📄 Processing files...').start();
-      const aggregatedContent = await aggregateFileContents(filteredFiles, inputDir, processingSpinner);
-      processingSpinner.succeed(`✅ Processed ${aggregatedContent.processedFiles}/${filteredFiles.length} files`);
-
-      // Log processing results for test validation
-      console.log(`Processed ${aggregatedContent.processedFiles}/${filteredFiles.length} files`);
+      const processingSpinner = ora("📄 Processing files...").start();
+      const aggregatedContent = await aggregateFileContents(
+        filteredFiles,
+        inputDir,
+        processingSpinner,
+      );
+      processingSpinner.succeed(
+        `✅ Processed ${aggregatedContent.processedFiles}/${filteredFiles.length} files`,
+      );
       if (aggregatedContent.errors.length > 0) {
         console.log(`Errors: ${aggregatedContent.errors.length}`);
       }
-      console.log(`Text files: ${aggregatedContent.textFiles.length}`);
-      if (aggregatedContent.binaryFiles.length > 0) {
-        console.log(`Binary files: ${aggregatedContent.binaryFiles.length}`);
-      }
 
       // Generate XML output using streaming
-      const xmlSpinner = ora('🔧 Generating XML output...').start();
+      const xmlSpinner = ora("🔧 Generating XML output...").start();
       await generateXMLOutput(aggregatedContent, outputPath);
-      xmlSpinner.succeed('📝 XML generation completed');
+      xmlSpinner.succeed("📝 XML generation completed");
 
       // Calculate and display statistics
       const outputStats = await fs.stat(outputPath);
-      const stats = calculateStatistics(aggregatedContent, outputStats.size);
+      const stats = await calculateStatistics(
+        aggregatedContent,
+        outputStats.size,
+        inputDir,
+      );
 
       // Display completion summary
-      console.log('\n📊 Completion Summary:');
-      console.log(`✅ Successfully processed ${filteredFiles.length} files into ${path.basename(outputPath)}`);
+      console.log("\n📊 Completion Summary:");
+      console.log(
+        `✅ Successfully processed ${filteredFiles.length} files into ${
+          path.basename(outputPath)
+        }`,
+      );
       console.log(`📁 Output file: ${outputPath}`);
       console.log(`📏 Total source size: ${stats.totalSize}`);
       console.log(`📄 Generated XML size: ${stats.xmlSize}`);
-      console.log(`📝 Total lines of code: ${stats.totalLines.toLocaleString()}`);
+      console.log(
+        `📝 Total lines of code: ${stats.totalLines.toLocaleString()}`,
+      );
       console.log(`🔢 Estimated tokens: ${stats.estimatedTokens}`);
-      console.log(`📊 File breakdown: ${stats.textFiles} text, ${stats.binaryFiles} binary, ${stats.errorFiles} errors`);
+      console.log(
+        `📊 File breakdown: ${stats.textFiles} text, ${stats.binaryFiles} binary, ${stats.errorFiles} errors\n`,
+      );
 
+      // Ask user if they want detailed stats + markdown report
+      const generateDetailed = await promptYesNo(
+        "Generate detailed stats (console + markdown) now?",
+        true,
+      );
+
+      if (generateDetailed) {
+        // Additional detailed stats
+        console.log("\n📈 Size Percentiles:");
+        console.log(
+          `   Avg: ${
+            Math.round(stats.avgFileSize).toLocaleString()
+          } B, Median: ${
+            Math.round(stats.medianFileSize).toLocaleString()
+          } B, p90: ${stats.p90.toLocaleString()} B, p95: ${stats.p95.toLocaleString()} B, p99: ${stats.p99.toLocaleString()} B`,
+        );
+
+        if (Array.isArray(stats.histogram) && stats.histogram.length) {
+          console.log("\n🧮 Size Histogram:");
+          for (const b of stats.histogram.slice(0, 2)) {
+            console.log(
+              `   ${b.label}: ${b.count} files, ${b.bytes.toLocaleString()} bytes`,
+            );
+          }
+          if (stats.histogram.length > 2) {
+            console.log(`   … and ${stats.histogram.length - 2} more buckets`);
+          }
+        }
+
+        if (Array.isArray(stats.byExtension) && stats.byExtension.length) {
+          const topExt = stats.byExtension.slice(0, 2);
+          console.log("\n📦 Top Extensions:");
+          for (const e of topExt) {
+            const pct = stats.totalBytes
+              ? ((e.bytes / stats.totalBytes) * 100)
+              : 0;
+            console.log(
+              `   ${e.ext}: ${e.count} files, ${e.bytes.toLocaleString()} bytes (${
+                pct.toFixed(2)
+              }%)`,
+            );
+          }
+          if (stats.byExtension.length > 2) {
+            console.log(
+              `   … and ${stats.byExtension.length - 2} more extensions`,
+            );
+          }
+        }
+
+        if (Array.isArray(stats.byDirectory) && stats.byDirectory.length) {
+          const topDir = stats.byDirectory.slice(0, 2);
+          console.log("\n📂 Top Directories:");
+          for (const d of topDir) {
+            const pct = stats.totalBytes
+              ? ((d.bytes / stats.totalBytes) * 100)
+              : 0;
+            console.log(
+              `   ${d.dir}: ${d.count} files, ${d.bytes.toLocaleString()} bytes (${
+                pct.toFixed(2)
+              }%)`,
+            );
+          }
+          if (stats.byDirectory.length > 2) {
+            console.log(
+              `   … and ${stats.byDirectory.length - 2} more directories`,
+            );
+          }
+        }
+
+        if (
+          Array.isArray(stats.depthDistribution) &&
+          stats.depthDistribution.length
+        ) {
+          console.log("\n🌳 Depth Distribution:");
+          const dd = stats.depthDistribution.slice(0, 2);
+          let line = "   " + dd.map((d) => `${d.depth}:${d.count}`).join("  ");
+          if (stats.depthDistribution.length > 2) {
+            line += `  … +${stats.depthDistribution.length - 2} more`;
+          }
+          console.log(line);
+        }
+
+        if (Array.isArray(stats.longestPaths) && stats.longestPaths.length) {
+          console.log("\n🧵 Longest Paths:");
+          for (const p of stats.longestPaths.slice(0, 2)) {
+            console.log(
+              `   ${p.path} (${p.length} chars, ${p.size.toLocaleString()} bytes)`,
+            );
+          }
+          if (stats.longestPaths.length > 2) {
+            console.log(`   … and ${stats.longestPaths.length - 2} more paths`);
+          }
+        }
+
+        if (stats.temporal) {
+          console.log("\n⏱️ Temporal:");
+          if (stats.temporal.oldest) {
+            console.log(
+              `   Oldest: ${stats.temporal.oldest.path} (${stats.temporal.oldest.mtime})`,
+            );
+          }
+          if (stats.temporal.newest) {
+            console.log(
+              `   Newest: ${stats.temporal.newest.path} (${stats.temporal.newest.mtime})`,
+            );
+          }
+          if (Array.isArray(stats.temporal.ageBuckets)) {
+            console.log("   Age buckets:");
+            for (const b of stats.temporal.ageBuckets.slice(0, 2)) {
+              console.log(
+                `     ${b.label}: ${b.count} files, ${b.bytes.toLocaleString()} bytes`,
+              );
+            }
+            if (stats.temporal.ageBuckets.length > 2) {
+              console.log(
+                `     … and ${
+                  stats.temporal.ageBuckets.length - 2
+                } more buckets`,
+              );
+            }
+          }
+        }
+
+        if (stats.quality) {
+          console.log("\n✅ Quality Signals:");
+          console.log(`   Zero-byte files: ${stats.quality.zeroByteFiles}`);
+          console.log(`   Empty text files: ${stats.quality.emptyTextFiles}`);
+          console.log(`   Hidden files: ${stats.quality.hiddenFiles}`);
+          console.log(`   Symlinks: ${stats.quality.symlinks}`);
+          console.log(
+            `   Large files (>= ${
+              (stats.quality.largeThreshold / (1024 * 1024)).toFixed(0)
+            } MB): ${stats.quality.largeFilesCount}`,
+          );
+          console.log(
+            `   Suspiciously large files (>= 100 MB): ${stats.quality.suspiciousLargeFilesCount}`,
+          );
+        }
+
+        if (
+          Array.isArray(stats.duplicateCandidates) &&
+          stats.duplicateCandidates.length
+        ) {
+          console.log("\n🧬 Duplicate Candidates:");
+          for (const d of stats.duplicateCandidates.slice(0, 2)) {
+            console.log(
+              `   ${d.reason}: ${d.count} files @ ${d.size.toLocaleString()} bytes`,
+            );
+          }
+          if (stats.duplicateCandidates.length > 2) {
+            console.log(
+              `   … and ${stats.duplicateCandidates.length - 2} more groups`,
+            );
+          }
+        }
+
+        if (typeof stats.compressibilityRatio === "number") {
+          console.log(
+            `\n🗜️ Compressibility ratio (sampled): ${
+              (stats.compressibilityRatio * 100).toFixed(2)
+            }%`,
+          );
+        }
+
+        if (stats.git && stats.git.isRepo) {
+          console.log("\n🔧 Git:");
+          console.log(
+            `   Tracked: ${stats.git.trackedCount} files, ${stats.git.trackedBytes.toLocaleString()} bytes`,
+          );
+          console.log(
+            `   Untracked: ${stats.git.untrackedCount} files, ${stats.git.untrackedBytes.toLocaleString()} bytes`,
+          );
+          if (
+            Array.isArray(stats.git.lfsCandidates) &&
+            stats.git.lfsCandidates.length
+          ) {
+            console.log("   LFS candidates (top 2):");
+            for (const f of stats.git.lfsCandidates.slice(0, 2)) {
+              console.log(`     ${f.path} (${f.size.toLocaleString()} bytes)`);
+            }
+            if (stats.git.lfsCandidates.length > 2) {
+              console.log(
+                `     … and ${stats.git.lfsCandidates.length - 2} more`,
+              );
+            }
+          }
+        }
+
+        if (Array.isArray(stats.largestFiles) && stats.largestFiles.length) {
+          console.log("\n📚 Largest Files (top 2):");
+          for (const f of stats.largestFiles.slice(0, 2)) {
+            // Show LOC for text files when available; omit ext and mtime
+            let locStr = "";
+            if (!f.isBinary && Array.isArray(aggregatedContent?.textFiles)) {
+              const tf = aggregatedContent.textFiles.find((t) =>
+                t.path === f.path
+              );
+              if (tf && typeof tf.lines === "number") {
+                locStr = `, LOC: ${tf.lines.toLocaleString()}`;
+              }
+            }
+            console.log(
+              `   ${f.path} – ${f.sizeFormatted} (${
+                f.percentOfTotal.toFixed(2)
+              }%)${locStr}`,
+            );
+          }
+          if (stats.largestFiles.length > 2) {
+            console.log(`   … and ${stats.largestFiles.length - 2} more files`);
+          }
+        }
+
+        // Write a comprehensive markdown report next to the XML
+        {
+          const mdPath = outputPath.endsWith(".xml")
+            ? outputPath.replace(/\.xml$/i, ".stats.md")
+            : outputPath + ".stats.md";
+          try {
+            const pct = (num, den) => (den ? ((num / den) * 100) : 0);
+            const md = [];
+            md.push(`# 🧾 Flatten Stats for ${path.basename(outputPath)}`);
+            md.push("");
+            md.push("## 📊 Summary");
+            md.push(`- Total source size: ${stats.totalSize}`);
+            md.push(`- Generated XML size: ${stats.xmlSize}`);
+            md.push(
+              `- Total lines of code: ${stats.totalLines.toLocaleString()}`,
+            );
+            md.push(`- Estimated tokens: ${stats.estimatedTokens}`);
+            md.push(
+              `- File breakdown: ${stats.textFiles} text, ${stats.binaryFiles} binary, ${stats.errorFiles} errors`,
+            );
+            md.push("");
+
+            // Percentiles
+            md.push("## 📈 Size Percentiles");
+            md.push(
+              `Avg: ${
+                Math.round(stats.avgFileSize).toLocaleString()
+              } B, Median: ${
+                Math.round(stats.medianFileSize).toLocaleString()
+              } B, p90: ${stats.p90.toLocaleString()} B, p95: ${stats.p95.toLocaleString()} B, p99: ${stats.p99.toLocaleString()} B`,
+            );
+            md.push("");
+
+            // Histogram
+            if (Array.isArray(stats.histogram) && stats.histogram.length) {
+              md.push("## 🧮 Size Histogram");
+              md.push("| Bucket | Files | Bytes |");
+              md.push("| --- | ---: | ---: |");
+              for (const b of stats.histogram) {
+                md.push(
+                  `| ${b.label} | ${b.count} | ${b.bytes.toLocaleString()} |`,
+                );
+              }
+              md.push("");
+            }
+
+            // Top Extensions
+            if (Array.isArray(stats.byExtension) && stats.byExtension.length) {
+              md.push("## 📦 Top Extensions by Bytes (Top 20)");
+              md.push("| Ext | Files | Bytes | % of total |");
+              md.push("| --- | ---: | ---: | ---: |");
+              for (const e of stats.byExtension.slice(0, 20)) {
+                const p = pct(e.bytes, stats.totalBytes);
+                md.push(
+                  `| ${e.ext} | ${e.count} | ${e.bytes.toLocaleString()} | ${
+                    p.toFixed(2)
+                  }% |`,
+                );
+              }
+              md.push("");
+            }
+
+            // Top Directories
+            if (Array.isArray(stats.byDirectory) && stats.byDirectory.length) {
+              md.push("## 📂 Top Directories by Bytes (Top 20)");
+              md.push("| Directory | Files | Bytes | % of total |");
+              md.push("| --- | ---: | ---: | ---: |");
+              for (const d of stats.byDirectory.slice(0, 20)) {
+                const p = pct(d.bytes, stats.totalBytes);
+                md.push(
+                  `| ${d.dir} | ${d.count} | ${d.bytes.toLocaleString()} | ${
+                    p.toFixed(2)
+                  }% |`,
+                );
+              }
+              md.push("");
+            }
+
+            // Depth distribution
+            if (
+              Array.isArray(stats.depthDistribution) &&
+              stats.depthDistribution.length
+            ) {
+              md.push("## 🌳 Depth Distribution");
+              md.push("| Depth | Count |");
+              md.push("| ---: | ---: |");
+              for (const d of stats.depthDistribution) {
+                md.push(`| ${d.depth} | ${d.count} |`);
+              }
+              md.push("");
+            }
+
+            // Longest paths
+            if (
+              Array.isArray(stats.longestPaths) && stats.longestPaths.length
+            ) {
+              md.push("## 🧵 Longest Paths (Top 25)");
+              md.push("| Path | Length | Bytes |");
+              md.push("| --- | ---: | ---: |");
+              for (const pth of stats.longestPaths) {
+                md.push(
+                  `| ${pth.path} | ${pth.length} | ${pth.size.toLocaleString()} |`,
+                );
+              }
+              md.push("");
+            }
+
+            // Temporal
+            if (stats.temporal) {
+              md.push("## ⏱️ Temporal");
+              if (stats.temporal.oldest) {
+                md.push(
+                  `- Oldest: ${stats.temporal.oldest.path} (${stats.temporal.oldest.mtime})`,
+                );
+              }
+              if (stats.temporal.newest) {
+                md.push(
+                  `- Newest: ${stats.temporal.newest.path} (${stats.temporal.newest.mtime})`,
+                );
+              }
+              if (Array.isArray(stats.temporal.ageBuckets)) {
+                md.push("");
+                md.push("| Age | Files | Bytes |");
+                md.push("| --- | ---: | ---: |");
+                for (const b of stats.temporal.ageBuckets) {
+                  md.push(
+                    `| ${b.label} | ${b.count} | ${b.bytes.toLocaleString()} |`,
+                  );
+                }
+              }
+              md.push("");
+            }
+
+            // Quality signals
+            if (stats.quality) {
+              md.push("## ✅ Quality Signals");
+              md.push(`- Zero-byte files: ${stats.quality.zeroByteFiles}`);
+              md.push(`- Empty text files: ${stats.quality.emptyTextFiles}`);
+              md.push(`- Hidden files: ${stats.quality.hiddenFiles}`);
+              md.push(`- Symlinks: ${stats.quality.symlinks}`);
+              md.push(
+                `- Large files (>= ${
+                  (stats.quality.largeThreshold / (1024 * 1024)).toFixed(0)
+                } MB): ${stats.quality.largeFilesCount}`,
+              );
+              md.push(
+                `- Suspiciously large files (>= 100 MB): ${stats.quality.suspiciousLargeFilesCount}`,
+              );
+              md.push("");
+            }
+
+            // Duplicates
+            if (
+              Array.isArray(stats.duplicateCandidates) &&
+              stats.duplicateCandidates.length
+            ) {
+              md.push("## 🧬 Duplicate Candidates");
+              md.push("| Reason | Files | Size (bytes) |");
+              md.push("| --- | ---: | ---: |");
+              for (const d of stats.duplicateCandidates) {
+                md.push(
+                  `| ${d.reason} | ${d.count} | ${d.size.toLocaleString()} |`,
+                );
+              }
+              md.push("");
+              // Detailed listing of duplicate file names and locations
+              md.push("### 🧬 Duplicate Groups Details");
+              let dupIndex = 1;
+              for (const d of stats.duplicateCandidates) {
+                md.push(
+                  `#### Group ${dupIndex}: ${d.count} files @ ${d.size.toLocaleString()} bytes (${d.reason})`,
+                );
+                if (Array.isArray(d.files) && d.files.length) {
+                  for (const fp of d.files) {
+                    md.push(`- ${fp}`);
+                  }
+                } else {
+                  md.push("- (file list unavailable)");
+                }
+                md.push("");
+                dupIndex++;
+              }
+              md.push("");
+            }
+
+            // Compressibility
+            if (typeof stats.compressibilityRatio === "number") {
+              md.push("## 🗜️ Compressibility");
+              md.push(
+                `Sampled compressibility ratio: ${
+                  (stats.compressibilityRatio * 100).toFixed(2)
+                }%`,
+              );
+              md.push("");
+            }
+
+            // Git
+            if (stats.git && stats.git.isRepo) {
+              md.push("## 🔧 Git");
+              md.push(
+                `- Tracked: ${stats.git.trackedCount} files, ${stats.git.trackedBytes.toLocaleString()} bytes`,
+              );
+              md.push(
+                `- Untracked: ${stats.git.untrackedCount} files, ${stats.git.untrackedBytes.toLocaleString()} bytes`,
+              );
+              if (
+                Array.isArray(stats.git.lfsCandidates) &&
+                stats.git.lfsCandidates.length
+              ) {
+                md.push("");
+                md.push("### 📦 LFS Candidates (Top 20)");
+                md.push("| Path | Bytes |");
+                md.push("| --- | ---: |");
+                for (const f of stats.git.lfsCandidates.slice(0, 20)) {
+                  md.push(`| ${f.path} | ${f.size.toLocaleString()} |`);
+                }
+              }
+              md.push("");
+            }
+
+            // Largest Files
+            if (
+              Array.isArray(stats.largestFiles) && stats.largestFiles.length
+            ) {
+              md.push("## 📚 Largest Files (Top 50)");
+              md.push("| Path | Size | % of total | LOC |");
+              md.push("| --- | ---: | ---: | ---: |");
+              for (const f of stats.largestFiles) {
+                let loc = "";
+                if (
+                  !f.isBinary && Array.isArray(aggregatedContent?.textFiles)
+                ) {
+                  const tf = aggregatedContent.textFiles.find((t) =>
+                    t.path === f.path
+                  );
+                  if (tf && typeof tf.lines === "number") {
+                    loc = tf.lines.toLocaleString();
+                  }
+                }
+                md.push(
+                  `| ${f.path} | ${f.sizeFormatted} | ${
+                    f.percentOfTotal.toFixed(2)
+                  }% | ${loc} |`,
+                );
+              }
+              md.push("");
+            }
+
+            await fs.writeFile(mdPath, md.join("\n"));
+            console.log(`\n🧾 Detailed stats report written to: ${mdPath}`);
+          } catch (e) {
+            console.warn(`⚠️ Failed to write stats markdown: ${e.message}`);
+          }
+        }
+      }
     } catch (error) {
-      console.error('❌ Critical error:', error.message);
-      console.error('An unexpected error occurred.');
+      console.error("❌ Critical error:", error.message);
+      console.error("An unexpected error occurred.");
       process.exit(1);
     }
   });

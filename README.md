@@ -1,4 +1,4 @@
-# BMad-Method: Universal AI Agent Framework
+# BMAD-METHOD™: Universal AI Agent Framework
 
 [![Version](https://img.shields.io/npm/v/bmad-method?color=blue&label=version)](https://www.npmjs.com/package/bmad-method)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -11,11 +11,11 @@ Foundations in Agentic Agile Driven Development, known as the Breakthrough Metho
 
 **[Join our Discord Community](https://discord.gg/gk8jAdXWmj)** - A growing community for AI enthusiasts! Get help, share ideas, explore AI agents & frameworks, collaborate on tech projects, enjoy hobbies, and help each other succeed. Whether you're stuck on BMad, building your own agents, or just want to chat about the latest in AI - we're here for you! **Some mobile and VPN may have issue joining the discord, this is a discord issue - if the invite does not work, try from your own internet or another network, or non-VPN.**
 
-⭐ **If you find this project helpful or useful, please give it a star in the upper right hand corner!** It helps others discover BMad-Method and you will be notified of updates!
+⭐ **If you find this project helpful or useful, please give it a star in the upper right hand corner!** It helps others discover BMAD-METHOD™ and you will be notified of updates!
 
 ## Overview
 
-**BMad Method's Two Key Innovations:**
+**BMAD-METHOD™'s Two Key Innovations:**
 
 **1. Agentic Planning:** Dedicated agents (Analyst, PM, Architect) collaborate with you to create detailed, consistent PRDs and Architecture documents. Through advanced prompt engineering and human-in-the-loop refinement, these planning agents produce comprehensive specifications that go far beyond generic AI task generation.
 
@@ -49,7 +49,7 @@ This two-phase approach eliminates both **planning inconsistency** and **context
 
 ## Important: Keep Your BMad Installation Updated
 
-**Stay up-to-date effortlessly!** If you already have BMad-Method installed in your project, simply run:
+**Stay up-to-date effortlessly!** If you already have BMAD-METHOD™ installed in your project, simply run:
 
 ```bash
 npx bmad-method install
@@ -75,6 +75,8 @@ This makes it easy to benefit from the latest improvements, bug fixes, and new a
 
 ```bash
 npx bmad-method install
+# OR explicitly use stable tag:
+npx bmad-method@stable install
 # OR if you already have BMad installed:
 git pull
 npm run install:bmad
@@ -108,11 +110,11 @@ npm run install:bmad # build and install all to a destination folder
 
 ## 🌟 Beyond Software Development - Expansion Packs
 
-BMad's natural language framework works in ANY domain. Expansion packs provide specialized AI agents for creative writing, business strategy, health & wellness, education, and more. Also expansion packs can expand the core BMad-Method with specific functionality that is not generic for all cases. [See the Expansion Packs Guide](docs/expansion-packs.md) and learn to create your own!
+BMAD™'s natural language framework works in ANY domain. Expansion packs provide specialized AI agents for creative writing, business strategy, health & wellness, education, and more. Also expansion packs can expand the core BMAD-METHOD™ with specific functionality that is not generic for all cases. [See the Expansion Packs Guide](docs/expansion-packs.md) and learn to create your own!
 
 ## Codebase Flattener Tool
 
-The BMad-Method includes a powerful codebase flattener tool designed to prepare your project files for AI model consumption. This tool aggregates your entire codebase into a single XML file, making it easy to share your project context with AI assistants for analysis, debugging, or development assistance.
+The BMAD-METHOD™ includes a powerful codebase flattener tool designed to prepare your project files for AI model consumption. This tool aggregates your entire codebase into a single XML file, making it easy to share your project context with AI assistants for analysis, debugging, or development assistance.
 
 ### Features
 
@@ -144,7 +146,7 @@ npx bmad-method flatten --input /path/to/source --output /path/to/output/codebas
 
 The tool will display progress and provide a comprehensive summary:
 
-```
+```text
 📊 Completion Summary:
 ✅ Successfully processed 156 files into flattened-codebase.xml
 📁 Output file: /path/to/your/project/flattened-codebase.xml
@@ -155,7 +157,40 @@ The tool will display progress and provide a comprehensive summary:
 📊 File breakdown: 142 text, 14 binary, 0 errors
 ```
 
-The generated XML file contains all your project's source code in a structured format that AI models can easily parse and understand, making it perfect for code reviews, architecture discussions, or getting AI assistance with your BMad-Method projects.
+The generated XML file contains your project's text-based source files in a structured format that AI models can easily parse and understand, making it perfect for code reviews, architecture discussions, or getting AI assistance with your BMAD-METHOD™ projects.
+
+#### Advanced Usage & Options
+
+- CLI options
+  - `-i, --input <path>`: Directory to flatten. Default: current working directory or auto-detected project root when run interactively.
+  - `-o, --output <path>`: Output file path. Default: `flattened-codebase.xml` in the chosen directory.
+- Interactive mode
+  - If you do not pass `--input` and `--output` and the terminal is interactive (TTY), the tool will attempt to detect your project root (by looking for markers like `.git`, `package.json`, etc.) and prompt you to confirm or override the paths.
+  - In non-interactive contexts (e.g., CI), it will prefer the detected root silently; otherwise it falls back to the current directory and default filename.
+- File discovery and ignoring
+  - Uses `git ls-files` when inside a git repository for speed and correctness; otherwise falls back to a glob-based scan.
+  - Applies your `.gitignore` plus a curated set of default ignore patterns (e.g., `node_modules`, build outputs, caches, logs, IDE folders, lockfiles, large media/binaries, `.env*`, and previously generated XML outputs).
+- Binary handling
+  - Binary files are detected and excluded from the XML content. They are counted in the final summary but not embedded in the output.
+- XML format and safety
+  - UTF-8 encoded file with root element `<files>`.
+  - Each text file is emitted as a `<file path="relative/path">` element whose content is wrapped in `<![CDATA[ ... ]]>`.
+  - The tool safely handles occurrences of `]]>` inside content by splitting the CDATA to preserve correctness.
+  - File contents are preserved as-is and indented for readability inside the XML.
+- Performance
+  - Concurrency is selected automatically based on your CPU and workload size. No configuration required.
+  - Running inside a git repo improves discovery performance.
+
+#### Minimal XML example
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<files>
+  <file path="src/index.js"><![CDATA[
+    // your source content
+  ]]></file>
+</files>
+```
 
 ## Documentation & Resources
 
@@ -180,6 +215,10 @@ The generated XML file contains all your project's source code in a structured f
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+## Trademark Notice
+
+BMAD™ and BMAD-METHOD™ are trademarks of BMad Code, LLC. All rights reserved.
 
 [![Contributors](https://contrib.rocks/image?repo=bmadcode/bmad-method)](https://github.com/bmadcode/bmad-method/graphs/contributors)
 
